@@ -1,14 +1,17 @@
 from enum import Enum
 
 import numpy as np
-from pygame import Surface, draw
+from pygame import Surface, draw, font
 from scipy.spatial import ConvexHull, qhull
 from opensimplex import OpenSimplex
 
 from Graph import Graph
 from config import SEED, MAP_SIZE, LAND_PERLIN_WEIGHT, LAND_RADIAL_WEIGHT, LAND_THRESHOLD, \
     LAND_CORNER_FACTOR, RANDOM_LAKE_FACTOR, LAND_MASS_CULL_SIZE, STARTING_LAND, STARTING_LAND_POS, STARTING_LAND_SIZE, \
-    DRAW_REGION_OUTLINE, DRAW_CORNERS, REGION_OUTLINE_WIDTH
+    DRAW_REGION_OUTLINE, DRAW_CORNERS, REGION_OUTLINE_WIDTH, DRAW_DISTANCE_FROM_OCEAN_CORNERS, \
+    DRAW_DISTANCE_FROM_OCEAN_REGIONS, DRAW_DISTANCE_FROM_WATER_CORNERS, DRAW_DISTANCE_FROM_WATER_REGIONS, \
+    DRAW_REGIONS_ELEVATION, DRAW_REGIONS_NORMAL, DRAW_REGIONS_OCEAN_DISTANCE, DRAW_REGIONS_WATER_DISTANCE, \
+    DRAW_REGIONS_ELEVATION_COLORED, DRAW_ELEVATION_ON_REGIONS, ELEVATION_OCEAN_WEIGHT, ELEVATION_PERLIN_WEIGHT
 
 
 class GeographyType(Enum):
@@ -34,7 +37,14 @@ class Corner:
 
         self.type = GeographyType.WATER
 
-        self.elevation = 0
+        self.elevation = 1
+
+        self.steps_from_ocean = 0
+        self.nearest_ocean_neighbor = None
+        self.steps_from_water = 0
+        self.nearest_water_neighbor = None
+
+        self.font = font.SysFont('ariel', 40)
 
     def infer_land(self):
         if self.type is not GeographyType.BORDER:
@@ -47,6 +57,17 @@ class Corner:
     def draw(self, surface):
         if DRAW_CORNERS:
             self.location.draw(surface, color=self.type.value)
+
+        if DRAW_DISTANCE_FROM_OCEAN_CORNERS and \
+                self.type in (GeographyType.LAND, GeographyType.COAST, GeographyType.WATER):
+            font_surface = self.font.render(str(self.steps_from_ocean), 1, (0, 255, 0))
+            surface.blit(font_surface, (self.location.x - int(font_surface.get_width() / 2),
+                         self.location.y - int(font_surface.get_height() / 2)))
+        elif DRAW_DISTANCE_FROM_WATER_CORNERS and \
+                self.type in (GeographyType.LAND, GeographyType.COAST, GeographyType.WATER):
+            font_surface = self.font.render(str(self.steps_from_water), 1, (0, 255, 0))
+            surface.blit(font_surface, (self.location.x - int(font_surface.get_width() / 2),
+                         self.location.y - int(font_surface.get_height() / 2)))
 
 
 class Region:
@@ -62,7 +83,14 @@ class Region:
 
         self.type = GeographyType.WATER
 
-        self.elevation = 0
+        self.elevation = 1
+
+        self.steps_from_ocean = 0
+        self.nearest_ocean_neighbor = None
+        self.steps_from_water = 0
+        self.nearest_water_neighbor = None
+
+        self.font = font.SysFont('ariel', 60)
 
     def make_hull(self):
         corner_list = list(self.corners)
@@ -129,13 +157,43 @@ class Region:
         self.elevation /= int(len(self.corners))
 
     def draw(self, surface):
-        draw.polygon(surface, self.type.value, self.hull, 0)
-        # draw.polygon(surface, (max(0, min(255, self.type.value[0] + self.elevation)),
-        #                        max(0, min(255, self.type.value[1] + self.elevation)),
-        #                        max(0, min(255, self.type.value[2] + self.elevation))), self.hull, 0)
-        # draw.polygon(surface, (self.elevation, self.elevation, self.elevation), self.hull, 0)
+        if DRAW_REGIONS_NORMAL:
+            draw.polygon(surface, self.type.value, self.hull, 0)
+        elif DRAW_REGIONS_ELEVATION:
+            draw.polygon(surface, (max(0, min(255, int(self.elevation * 255))),
+                                   max(0, min(255, int(self.elevation * 255))),
+                                   max(0, min(255, int(self.elevation * 255)))), self.hull, 0)
+        elif DRAW_REGIONS_ELEVATION_COLORED:
+            draw.polygon(surface, (max(0, min(255, int((self.type.value[0] * self.elevation)))),
+                                   max(0, min(255, int((self.type.value[1] * self.elevation)))),
+                                   max(0, min(255, int((self.type.value[2] * self.elevation))))), self.hull, 0)
+        elif DRAW_REGIONS_OCEAN_DISTANCE:
+            draw.polygon(surface, (max(0, min(255, self.steps_from_ocean * 20)),
+                                   max(0, min(255, self.steps_from_ocean * 20)),
+                                   max(0, min(255, self.steps_from_ocean * 20))), self.hull, 0)
+        elif DRAW_REGIONS_WATER_DISTANCE:
+            draw.polygon(surface, (max(0, min(255, self.steps_from_water * 20)),
+                                   max(0, min(255, self.steps_from_water * 20)),
+                                   max(0, min(255, self.steps_from_water * 20))), self.hull, 0)
+
         if DRAW_REGION_OUTLINE:
             draw.polygon(surface, (0, 0, 0), self.hull, REGION_OUTLINE_WIDTH)
+
+        if DRAW_ELEVATION_ON_REGIONS and \
+                self.type in (GeographyType.LAND, GeographyType.COAST, GeographyType.WATER):
+            font_surface = self.font.render(str(int(self.elevation * 1000)), 1, (255, 0, 0))
+            surface.blit(font_surface, (self.location.x - int(font_surface.get_width() / 2),
+                         self.location.y - int(font_surface.get_height() / 2)))
+        elif DRAW_DISTANCE_FROM_OCEAN_REGIONS and \
+                self.type in (GeographyType.LAND, GeographyType.COAST, GeographyType.WATER):
+            font_surface = self.font.render(str(self.steps_from_ocean), 1, (255, 0, 0))
+            surface.blit(font_surface, (self.location.x - int(font_surface.get_width() / 2),
+                         self.location.y - int(font_surface.get_height() / 2)))
+        elif DRAW_DISTANCE_FROM_WATER_REGIONS and \
+                        self.type in (GeographyType.LAND, GeographyType.COAST, GeographyType.WATER):
+            font_surface = self.font.render(str(self.steps_from_water), 1, (255, 0, 0))
+            surface.blit(font_surface, (self.location.x - int(font_surface.get_width() / 2),
+                                        self.location.y - int(font_surface.get_height() / 2)))
 
 
 class LandMass:
@@ -143,11 +201,14 @@ class LandMass:
         self.regions = set()
         self.corners = set()
 
-        self.starting_region = starting_region
-
-        self.regions.add(self.starting_region)
+        self.regions.add(starting_region)
 
         self.size = 0
+        self.max_region_steps_from_ocean = 0
+        self.max_region_steps_from_water = 0
+        self.max_corner_steps_from_ocean = 0
+        self.max_corner_steps_from_water = 0
+
         self.surrounding_type = GeographyType.OCEAN
 
         self.build()
@@ -160,7 +221,7 @@ class LandMass:
             for region in self.regions:
                 for neighbor in region.neighbors:
                     if neighbor not in self.regions:
-                        if neighbor.type in (GeographyType.LAND, GeographyType.COAST):
+                        if neighbor.type in (GeographyType.WATER, GeographyType.LAND, GeographyType.COAST):
                             regions_to_add.add(neighbor)
                             has_regions_left = True
                         else:
@@ -175,6 +236,10 @@ class LandMass:
                 corner.landmass = self
 
         self.size = len(self.regions)
+        self.max_region_steps_from_ocean = max([r.steps_from_ocean for r in self.regions])
+        self.max_region_steps_from_water = max([r.steps_from_water for r in self.regions])
+        self.max_corner_steps_from_ocean = max([c.steps_from_ocean for c in self.corners])
+        self.max_corner_steps_from_water = max([c.steps_from_water for c in self.corners])
 
     def sink(self):
         for region in self.regions:
@@ -184,6 +249,18 @@ class LandMass:
             if corner.type is not GeographyType.BORDER:
                 corner.type = self.surrounding_type
             corner.landmass = None
+
+    def dissolve(self):
+        for region in self.regions:
+            region.landmass = None
+        for corner in self.corners:
+            corner.landmass = None
+
+    def draw(self, surface):
+        for corner in self.corners:
+            corner.draw(surface)
+        for region in self.regions:
+            region.draw(surface)
 
 
 class Geography:
@@ -204,13 +281,23 @@ class Geography:
     def reset(self):
         print('Resetting Land Masses.\n')
         while len(self.land_masses) > 0:
-            self.land_masses.pop().sink()
+            self.land_masses.pop().dissolve()
+
+        for corner in self.corners.values():
+            if corner.type is not GeographyType.BORDER:
+                corner.type = GeographyType.WATER
+        for region in self.regions.values():
+            region.type = GeographyType.WATER
+
+        self.unfinalize()
 
     def finalize(self):
         print('Finalizing Valid Landmasses.\n')
         self.create_oceans()
+        self.find_nearest_ocean()
+        self.find_nearest_water()
         self.create_land_masses()
-        # self.set_elevation()
+        self.set_elevation()
 
     def unfinalize(self):
         print('Reverting Finalization.\n')
@@ -219,14 +306,21 @@ class Geography:
                 region.type = GeographyType.LAND
             if region.type is GeographyType.OCEAN:
                 region.type = GeographyType.WATER
-            region.elevation = 0
+            region.elevation = 1
+            region.steps_from_ocean = 0
+            region.steps_from_water = 0
 
         for corner in self.corners.values():
             if corner.type is GeographyType.COAST:
                 corner.type = GeographyType.LAND
             if corner.type is GeographyType.OCEAN:
                 corner.type = GeographyType.WATER
-            corner.elevation = 0
+            corner.elevation = 1
+            corner.steps_from_ocean = 0
+            corner.steps_from_water = 0
+
+        while len(self.land_masses) > 0:
+            self.land_masses.pop().dissolve()
 
     def initialize(self):
         graph = Graph()
@@ -324,24 +418,112 @@ class Geography:
 
         print('Land Masses Cleaned Up!\n')
 
+    def find_nearest_ocean(self):
+        print('Finding distance to ocean for regions.')
+        regions_to_check = set()
+        for region in self.regions.values():
+            if region.type is GeographyType.COAST:
+                regions_to_check.add(region)
+
+        steps = 1
+
+        while len(regions_to_check) > 0:
+            new_regions_to_check = set()
+            for region in regions_to_check:
+                if region.steps_from_ocean == 0:
+                    region.steps_from_ocean = steps
+                    for neighbor in region.neighbors:
+                        if neighbor.type in (GeographyType.LAND, GeographyType.WATER):
+                            new_regions_to_check.add(neighbor)
+
+            regions_to_check = new_regions_to_check
+            steps += 1
+
+        print('Finding distance to ocean for corners.')
+        corners_to_check = set()
+        for corner in self.corners.values():
+            if corner.type is GeographyType.COAST:
+                corners_to_check.add(corner)
+
+        steps = 1
+
+        while len(corners_to_check) > 0:
+            new_corners_to_check = set()
+            for corner in corners_to_check:
+                if corner.steps_from_ocean == 0:
+                    corner.steps_from_ocean = steps
+                    for neighbor in corner.neighbors:
+                        if neighbor.type in (GeographyType.LAND, GeographyType.WATER):
+                            new_corners_to_check.add(neighbor)
+
+            corners_to_check = new_corners_to_check
+            steps += 1
+
+    def find_nearest_water(self):
+        print('Finding distance to water for regions.')
+        regions_to_check = set()
+        for region in self.regions.values():
+            if region.type is GeographyType.COAST:
+                regions_to_check.add(region)
+            elif region.type is GeographyType.WATER:
+                for neighbor in region.neighbors:
+                    if neighbor.type is not GeographyType.WATER:
+                        regions_to_check.add(neighbor)
+
+        steps = 1
+
+        while len(regions_to_check) > 0:
+            new_regions_to_check = set()
+            for region in regions_to_check:
+                if region.steps_from_water == 0:
+                    region.steps_from_water = steps
+                    for neighbor in region.neighbors:
+                        if neighbor.type is GeographyType.LAND:
+                            new_regions_to_check.add(neighbor)
+
+            regions_to_check = new_regions_to_check
+            steps += 1
+
+        print('Finding distance to water for corners.')
+        corners_to_check = set()
+        for corner in self.corners.values():
+            if corner.type is GeographyType.COAST:
+                corners_to_check.add(corner)
+            elif corner.type is GeographyType.LAND:
+                for region in corner.regions:
+                    if region.type is GeographyType.WATER:
+                        corners_to_check.add(corner)
+                        break
+
+        steps = 1
+
+        while len(corners_to_check) > 0:
+            new_corners_to_check = set()
+            for corner in corners_to_check:
+                if corner.steps_from_water == 0:
+                    corner.steps_from_water = steps
+                    for neighbor in corner.neighbors:
+                        if neighbor.type is GeographyType.LAND:
+                            new_corners_to_check.add(neighbor)
+
+            corners_to_check = new_corners_to_check
+            steps += 1
+
     def set_elevation(self):
         for corner in self.corners.values():
             if corner.type in (GeographyType.OCEAN, GeographyType.BORDER):
-                corner.elevation = 50
+                corner.elevation = 0.2
             else:
-                distance_from_center = int(((corner.location.x - corner.landmass.starting_region.location.x) ** 2 +
-                                            (corner.location.y - corner.landmass.starting_region.location.y) ** 2) **
-                                           0.5)
-                distance_factor = 1 - (distance_from_center / 5000)
-
-                corner.elevation = int(min(255.0, ((corner.noise_factor * LAND_PERLIN_WEIGHT) +
-                                                   (distance_factor * LAND_RADIAL_WEIGHT)) * 128))
+                corner.elevation = ((corner.noise_factor * ELEVATION_PERLIN_WEIGHT) +
+                                    ((corner.steps_from_ocean / corner.landmass.max_corner_steps_from_ocean) *
+                                     ELEVATION_OCEAN_WEIGHT)) / 2
 
         for region in self.regions.values():
             region.infer_elevation()
 
     def draw(self):
         print('Drawing.\n')
+        self.surface.fill((0, 0, 0))
         for region in self.regions.values():
             region.draw(self.surface)
         for corner in self.corners.values():

@@ -43,7 +43,6 @@ def create_surface(v, g):
 
 def reset_land(v, g):
     g.reset()
-    g.unfinalize()
     g.draw()
 
     v.update_subject(g.surface)
