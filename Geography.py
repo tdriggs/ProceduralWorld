@@ -21,6 +21,7 @@ class GeographyType(Enum):
     WATER = (50, 50, 255)
     LAND = (75, 150, 75)
     COAST = (230, 220, 200)
+    MOUNTAIN = (255, 0, 0)
 
 
 class Corner:
@@ -190,7 +191,7 @@ class Region:
             surface.blit(font_surface, (self.location.x - int(font_surface.get_width() / 2),
                          self.location.y - int(font_surface.get_height() / 2)))
         elif DRAW_DISTANCE_FROM_WATER_REGIONS and \
-                        self.type in (GeographyType.LAND, GeographyType.COAST, GeographyType.WATER):
+                self.type in (GeographyType.LAND, GeographyType.COAST, GeographyType.WATER):
             font_surface = self.font.render(str(self.steps_from_water), 1, (255, 0, 0))
             surface.blit(font_surface, (self.location.x - int(font_surface.get_width() / 2),
                                         self.location.y - int(font_surface.get_height() / 2)))
@@ -297,7 +298,8 @@ class Geography:
         self.find_nearest_ocean()
         self.find_nearest_water()
         self.create_land_masses()
-        self.set_elevation()
+        self.create_mountain_range()
+        # self.set_elevation()
 
     def unfinalize(self):
         print('Reverting Finalization.\n')
@@ -508,6 +510,49 @@ class Geography:
 
             corners_to_check = new_corners_to_check
             steps += 1
+
+    def create_mountain_range(self):
+        largest_landmass = max(self.land_masses, key=lambda l: l.size)
+        iterator = iter(largest_landmass.corners)
+        range_start = next(iterator)
+        range_end = next(iterator)
+        i = 0
+        done = False
+        while not done:
+            range_end = next(iterator)
+            i += 1
+
+            if range_end.type is GeographyType.LAND and i > 10:
+                done = True
+
+        print(range_start.type, range_end.type)
+
+        range_start.type = GeographyType.MOUNTAIN
+        range_end.type = GeographyType.MOUNTAIN
+
+        path = [range_start]
+        indices_visited = set()
+        indices_visited.add(range_start.index)
+
+        done = False
+        while not done:
+            distances = {}
+            for neighbor in path[-1].neighbors:
+                if neighbor.index not in indices_visited:
+                    distance = int((neighbor.location.x - range_end.location.x) ** 2 +
+                                   (neighbor.location.y - range_end.location.y) ** 2)
+                    distances[distance] = neighbor
+                    indices_visited.add(neighbor.index)
+
+            if len(distances) == 0:
+                path.remove(path[-1])
+            else:
+                curr_node = distances[min(distances.keys())]
+                if curr_node == range_end:
+                    done = True
+                else:
+                    curr_node.type = GeographyType.MOUNTAIN
+                    path.append(curr_node)
 
     def set_elevation(self):
         for corner in self.corners.values():
