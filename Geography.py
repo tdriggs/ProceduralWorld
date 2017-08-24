@@ -298,8 +298,8 @@ class Geography:
         self.find_nearest_ocean()
         self.find_nearest_water()
         self.create_land_masses()
-        self.create_mountain_range()
-        # self.set_elevation()
+        # self.create_mountain_range()
+        self.set_elevation()
 
     def unfinalize(self):
         print('Reverting Finalization.\n')
